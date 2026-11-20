@@ -130,13 +130,32 @@ export default function App() {
     else alert("Error updating role: " + error.message);
   }
 
+    async function togglePremium(userId, currentStatus) {
+    const { error } = await supabase.from('user_stats').update({ is_premium: !currentStatus }).eq('user_id', userId);
+    if (!error) {
+      fetchUsers();
+    } else {
+      alert("Error updating premium: " + error.message);
+    }
+  }
+
   // --- LESSON FUNCTIONS ---
   async function handleCreateLesson(e) {
     e.preventDefault();
     if (userRole === 'a1_editor' && lessonLevelFilter !== 'A1') {
       return alert("You only have permission to create A1 lessons.");
     }
-    const { error } = await supabase.from('lessons').insert({ ...newLesson, level: lessonLevelFilter.toLowerCase(), author_id: session?.user?.id });
+    // THE FIX: Trim all text inputs
+    const cleanLesson = {
+      ...newLesson,
+      id: newLesson.id.trim(),
+      title_so: newLesson.title_so.trim(),
+      title_de: newLesson.title_de.trim(),
+      level: lessonLevelFilter.toLowerCase(),
+      author_id: session?.user?.id
+    };
+
+    const { error } = await supabase.from('lessons').insert(cleanLesson);
     if (!error) {
       alert("Lesson created!");
       setNewLesson({ id: '', level: 'a1', unit: 1, title_so: '', title_de: '', is_premium: false, author_id: '' });
@@ -155,43 +174,96 @@ export default function App() {
   }
 
   async function handleSaveLesson() {
-    await supabase.from('lessons').update({ title_so: editingLesson.title_so, title_de: editingLesson.title_de, unit: editingLesson.unit, is_premium: editingLesson.is_premium }).eq('id', editingLesson.id);
+    // THE FIX: Trim on update
+    await supabase.from('lessons').update({ 
+      title_so: editingLesson.title_so.trim(), 
+      title_de: editingLesson.title_de.trim(), 
+      unit: editingLesson.unit, 
+      is_premium: editingLesson.is_premium 
+    }).eq('id', editingLesson.id);
     alert("Lesson saved!");
     fetchLessons();
-  }
+  } 
 
   async function handleAddVocab(e) {
     e.preventDefault();
-    const { data } = await supabase.from('vocabulary').insert({ lesson_id: editingLesson.id, de: newDe, so: newSo }).select();
+    // THE FIX: Trim the German and Somali words
+    const { data } = await supabase.from('vocabulary').insert({ 
+      lesson_id: editingLesson.id, 
+      de: newDe.trim(), 
+      so: newSo.trim() 
+    }).select();
+    
     if (data) { setVocabulary([...vocabulary, data[0]]); setNewDe(''); setNewSo(''); }
   }
   async function handleDeleteVocab(id) { await supabase.from('vocabulary').delete().eq('id', id); setVocabulary(vocabulary.filter(v => v.id !== id)); }
   
   async function handleAddExercise(e) {
     e.preventDefault();
-    const optionsArray = newOptions.split(',').map(s => s.trim()).filter(s => s !== '');
-    const { data } = await supabase.from('exercises').insert({ lesson_id: editingLesson.id, type: 'sentence_build', prompt: newPrompt, correct_answer: newCorrectAnswer, options: optionsArray }).select();
+    // THE FIX: Trim the prompt, answer, and each option
+    const cleanOptions = newOptions.split(',').map(s => s.trim()).filter(s => s !== '');
+    
+    const { data } = await supabase.from('exercises').insert({ 
+      lesson_id: editingLesson.id, 
+      type: 'sentence_build', 
+      prompt: newPrompt.trim(), 
+      correct_answer: newCorrectAnswer.trim(), 
+      options: cleanOptions 
+    }).select();
+    
     if (data) { setExercises([...exercises, data[0]]); setNewPrompt(''); setNewCorrectAnswer(''); setNewOptions(''); }
-  }
+  } 
   async function handleDeleteExercise(id) { await supabase.from('exercises').delete().eq('id', id); setExercises(exercises.filter(e => e.id !== id)); }
 
   // --- ACTIVITY FUNCTIONS ---
   async function handleCreateActivity(e) {
     e.preventDefault();
-    let finalQuestions = newActivity.type === 'fill_blank' ? { wordBank: wordBank.split(',').map(w => w.trim()), sentences: fillBlankQuestions } : activityQuestions;
-    const { error } = await supabase.from('activities').insert({ ...newActivity, questions: finalQuestions });
+    
+    // THE FIX: Trim word bank and sentences
+    let finalQuestions = newActivity.type === 'fill_blank' 
+      ? { 
+          wordBank: wordBank.split(',').map(w => w.trim()).filter(w => w !== ''), 
+          sentences: fillBlankQuestions.map(q => ({ text: q.text.trim(), answer: q.answer.trim() })) 
+        } 
+      : activityQuestions.map(q => ({ 
+          question: q.question.trim(), 
+          options: q.options.map(o => o.trim()), 
+          answer: q.answer.trim() 
+        }));
+
+    const cleanActivity = {
+      ...newActivity,
+      title_so: newActivity.title_so.trim(),
+      title_de: newActivity.title_de.trim(),
+      content_so: newActivity.content_so.trim(),
+      content_de: newActivity.content_de.trim(),
+      questions: finalQuestions 
+    };
+
+    const { error } = await supabase.from('activities').insert(cleanActivity);
     if (!error) {
       alert("Activity published!");
       setNewActivity({ lesson_id: '', type: 'reading', title_so: '', title_de: '', content_so: '', content_de: '', image_url: '', audio_url: '' });
       setActivityQuestions([]); setFillBlankQuestions([]); setWordBank(''); fetchActivities();
     } else alert("Error: " + error.message);
   }
+ 
 
   async function handleUpdateActivity() {
     if (!editingActivity) return;
-    const { error } = await supabase.from('activities').update({ title_so: editingActivity.title_so, title_de: editingActivity.title_de, content_so: editingActivity.content_so, content_de: editingActivity.content_de, image_url: editingActivity.image_url, audio_url: editingActivity.audio_url, questions: editingActivity.questions }).eq('id', editingActivity.id);
+    // THE FIX: Trim on update
+    const { error } = await supabase.from('activities').update({ 
+      title_so: editingActivity.title_so.trim(), 
+      title_de: editingActivity.title_de.trim(), 
+      content_so: editingActivity.content_so.trim(), 
+      content_de: editingActivity.content_de.trim(), 
+      image_url: editingActivity.image_url, 
+      audio_url: editingActivity.audio_url, 
+      questions: editingActivity.questions 
+    }).eq('id', editingActivity.id);
+    
     if (!error) { alert("Activity updated!"); setEditingActivity(null); fetchActivities(); } else alert("Error: " + error.message);
-  }
+  } 
 
   async function handleDeleteActivity(id) {
     if (!window.confirm("Delete this activity?")) return;
@@ -200,24 +272,36 @@ export default function App() {
 
   function handleAddQuestion(e) {
     e.preventDefault();
-    setActivityQuestions([...activityQuestions, { question: newQ.question, options: newQ.options.split(',').map(s => s.trim()), answer: newQ.answer }]);
+    // THE FIX: Trim when adding a new question
+    setActivityQuestions([...activityQuestions, { 
+      question: newQ.question.trim(), 
+      options: newQ.options.split(',').map(s => s.trim()).filter(s => s !== ''), 
+      answer: newQ.answer.trim() 
+    }]);
     setNewQ({ question: '', options: '', answer: '' });
   }
 
+
   function handleAddEditQuestion(e) {
     e.preventDefault();
-    setEditingActivity({ ...editingActivity, questions: [...(editingActivity.questions || []), { question: editNewQ.question, options: editNewQ.options.split(',').map(s => s.trim()), answer: editNewQ.answer }] });
+    // THE FIX: Trim when editing
+    setEditingActivity({ ...editingActivity, questions: [...(editingActivity.questions || []), { 
+      question: editNewQ.question.trim(), 
+      options: editNewQ.options.split(',').map(s => s.trim()).filter(s => s !== ''), 
+      answer: editNewQ.answer.trim() 
+    }] });
     setEditNewQ({ question: '', options: '', answer: '' });
   }
   function handleDeleteEditQuestion(index) { let n = [...editingActivity.questions]; n.splice(index, 1); setEditingActivity({ ...editingActivity, questions: n }); }
   
   function handleAddEditFbSentence(e) {
-    e.preventDefault(); if(!editFbSentence || !editFbAnswer) return;
+    e.preventDefault(); if(!editFbSentence.trim() || !editFbAnswer.trim()) return;
+    // THE FIX: Trim sentences
     const curr = editingActivity.questions || { wordBank: [], sentences: [] };
-    setEditingActivity({ ...editingActivity, questions: { ...curr, sentences: [...(curr.sentences || []), { text: editFbSentence, answer: editFbAnswer }] } });
+    setEditingActivity({ ...editingActivity, questions: { ...curr, sentences: [...(curr.sentences || []), { text: editFbSentence.trim(), answer: editFbAnswer.trim() }] } });
     setEditFbSentence(''); setEditFbAnswer('');
   }
-  function handleDeleteEditFbSentence(index) {
+  function handleDeleteEditFbSentence(index) { 
     let curr = { ...editingActivity.questions }; let n = [...curr.sentences]; n.splice(index, 1); curr.sentences = n;
     setEditingActivity({ ...editingActivity, questions: curr });
   }
@@ -230,7 +314,18 @@ export default function App() {
       const { error } = await supabase.storage.from('article-images').upload(fileName, imageFile);
       if (!error) { const { data: { publicUrl } } = supabase.storage.from('article-images').getPublicUrl(fileName); imageUrl = publicUrl; }
     }
-    const { error } = await supabase.from('articles').insert({ ...newArticle, image_url: imageUrl, author_id: session?.user?.id });
+    
+    // THE FIX: Trim article text
+    const cleanArticle = {
+      title_so: newArticle.title_so.trim(),
+      title_de: newArticle.title_de.trim(),
+      body_so: newArticle.body_so.trim(),
+      body_de: newArticle.body_de.trim(),
+      image_url: imageUrl,
+      author_id: session?.user?.id
+    };
+
+    const { error } = await supabase.from('articles').insert(cleanArticle);
     if (!error) { alert("Article published!"); setNewArticle({ title_so: '', title_de: '', body_so: '', body_de: '', author_id: '' }); setImageFile(null); fetchArticles(); }
     setUploading(false);
   }
@@ -426,29 +521,56 @@ export default function App() {
 
         {/* USERS TAB */}
         {activeTab === 'users' && userRole === 'admin' && (
-          <Card>
+               <Card>
             <h2 style={{ margin: '0 0 20px 0', fontSize: isMobile ? '20px' : '24px' }}>User Management</h2>
             <TableWrap>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid #F1F5F9', textAlign: 'left' }}>
                     <th style={{ padding: '12px', fontSize: '13px' }}>Email</th>
+                    <th style={{ padding: '12px', fontSize: '13px' }}>XP</th>
+                    <th style={{ padding: '12px', fontSize: '13px' }}>Last Active</th>
+                    <th style={{ padding: '12px', fontSize: '13px' }}>Premium Access</th>
                     <th style={{ padding: '12px', fontSize: '13px' }}>Role</th>
-                    <th style={{ padding: '12px', fontSize: '13px' }}>Change</th>
                   </tr>
                 </thead>
                 <tbody>
                   {users.map(u => (
                     <tr key={u.user_id} style={{ borderBottom: '1px solid #F1F5F9' }}>
-                      <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '13px', wordBreak: 'break-all' }}>{u.email}</td>
-                      <td style={{ padding: '12px' }}>
-                        <span style={{ backgroundColor: u.role === 'admin' ? '#FEF3C7' : u.role === 'user' ? '#F1F5F9' : '#ECFDF5', color: u.role === 'admin' ? '#D97706' : u.role === 'user' ? '#64748B' : '#10B981', padding: '4px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                          {u.role || 'user'}
-                        </span>
+                      {/* 1. EMAIL */}
+                      <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '13px', wordBreak: 'break-all' }}>
+                        {u.email}
                       </td>
+                      
+                      {/* 2. XP */}
+                      <td style={{ padding: '12px', fontWeight: '900', fontSize: '13px', color: '#6366F1' }}>
+                        {u.total_xp}
+                      </td>
+
+                      {/* 3. LAST ACTIVE */}
+                      <td style={{ padding: '12px', fontSize: '13px', color: '#64748B' }}>
+                        {u.last_active_date ? new Date(u.last_active_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'Never'}
+                      </td>
+
+                      {/* 4. PREMIUM TOGGLE (The missing button!) */}
                       <td style={{ padding: '12px' }}>
-                        <select value={u.role || 'user'} onChange={(e) => updateUserRole(u.user_id, e.target.value)} style={{ padding: '8px', borderRadius: '8px', border: '1px solid #E2E8F0', fontSize: '13px' }}>
-                          <option value="user">User</option>
+                        <Button 
+                          variant={u.is_premium ? 'danger' : 'success'} 
+                          onClick={() => togglePremium(u.user_id, u.is_premium)} 
+                          style={{ padding: '6px 12px', fontSize: '12px', whiteSpace: 'nowrap' }}
+                        >
+                          {u.is_premium ? 'Revoke' : 'Grant Premium'}
+                        </Button>
+                      </td>
+
+                      {/* 5. ROLE DROPDOWN */}
+                      <td style={{ padding: '12px' }}>
+                        <select 
+                          value={u.role || 'user'} 
+                          onChange={(e) => updateUserRole(u.user_id, e.target.value)} 
+                          style={{ padding: '8px', borderRadius: '8px', border: '1px solid #E2E8F0', fontSize: '13px' }}
+                        >
+                          <option value="user">User (App only)</option>
                           <option value="news_editor">News Editor</option>
                           <option value="a1_editor">A1 Editor</option>
                           <option value="admin">Admin</option>
@@ -695,7 +817,7 @@ export default function App() {
             </Card>
           </div>
         )}
-
+  
       </div>
     </div>
   );
